@@ -395,8 +395,22 @@ async def list_messages(
 
         # CRM injection.
         if include_crm_context and result.get("chat"):
+            # PARCHE LOCAL 2026-08-19 (bug upstream): el bridge NUNCA manda
+            # `phone` dentro de `chat` -- `json:"phone"` solo existe en
+            # groups.go y en /api/contacts/search. Con chat.phone siempre None
+            # y chat.name siendo el LID crudo ("144268136038585"), las dos vias
+            # de match fallaban y crm_context no se inyectaba jamas.
+            # El telefono si viaja en `merged_jids`; lo sacamos de ahi.
+            chat_phone = result["chat"].get("phone")
+            if not chat_phone:
+                for jid in [result["chat"].get("jid", "")] + list(result.get("merged_jids") or []):
+                    if "@s.whatsapp.net" in jid:
+                        digits = _normalize_phone(jid.split("@", 1)[0].split(":", 1)[0])
+                        if len(digits) >= 10:
+                            chat_phone = digits
+                            break
             ctx = lookup_crm_context(
-                phone=result["chat"].get("phone"),
+                phone=chat_phone,
                 display_name=result["chat"].get("name"),
             )
             if ctx is not None:
