@@ -525,6 +525,50 @@ async def send_reply_quote(recipient_jid: str, quoted_message_id: str, text: str
 
 
 @mcp.tool()
+async def send_file(
+    recipient_jid: str,
+    file_path: str,
+    caption: str = "",
+    as_document: bool = False,
+) -> dict[str, Any]:
+    """Create a DRAFT file message (image, video, PDF, any document). Does NOT
+    send until confirm_send is called.
+
+    The bridge reads the file from its own disk at draft time and only uploads it
+    to WhatsApp inside confirm_send, so nothing leaves the machine before you
+    authorize it.
+
+    Args:
+        recipient_jid: The chat JID (direct or group), with its @s.whatsapp.net or @g.us suffix.
+        file_path: Absolute path to the file on the bridge host (this machine).
+        caption: Optional text shown under the file.
+        as_document: True sends an image/video as a document (no compression, keeps the filename).
+
+    Limits (enforced by the bridge): images 16 MiB, documents 100 MiB.
+
+    Returns a draft_id. Claude must show you the recipient_display + preview and
+    wait for your OK before calling confirm_send(draft_id).
+    """
+    start = time.time()
+    body: dict[str, Any] = {"send_type": "file", "recipient_jid": recipient_jid, "file_path": file_path}
+    if caption:
+        body["caption"] = caption
+    if as_document:
+        body["as_document"] = True
+    params = {"recipient_jid": recipient_jid, "file": Path(file_path).name,
+              "caption_len": len(caption), "as_document": as_document}
+    try:
+        result = await _bridge_post("/api/sends", body)
+        _audit("send_file", params,
+               f"draft_id={result.get('draft_id')} recipient={result.get('recipient_display')}",
+               int((time.time() - start) * 1000))
+        return result
+    except Exception as e:  # noqa: BLE001
+        _audit("send_file", params, "failed", int((time.time() - start) * 1000), error=str(e))
+        raise
+
+
+@mcp.tool()
 async def send_reaction(recipient_jid: str, target_message_id: str, emoji: str) -> dict[str, Any]:
     """Create a DRAFT emoji reaction on a specific message.
 
